@@ -21,9 +21,10 @@ from finrl.meta.preprocessor.preprocessors import FeatureEngineer, data_split
 from finrl.meta.env_stock_trading.env_stocktrading import StockTradingEnv
 import pandas as pd
 import itertools
-
+from viz.viz import plot_ticker_plt as plot_ticker
 from finrl.agents.stablebaselines3.models import DRLAgent
 from stable_baselines3.common.logger import configure
+import warnings
 
 def set_dates():
     global TRAIN_START_DATE, TRAIN_END_DATE, TEST_START_DATE, TEST_END_DATE, TRADE_START_DATE, TRADE_END_DATE
@@ -62,6 +63,7 @@ def experiment_ddpg(training = False):
     df = YahooDownloader(start_date = TRAIN_START_DATE,
                      end_date = TRADE_END_DATE,
                      ticker_list = config_tickers.DOW_3_TICKER).fetch_data()
+    plot_ticker(df.tail(100), 'MSFT')
     import pdb; pdb.set_trace()
     processed_full = data_processing(df)
     # mvo_df = processed_full.sort_values(['date','tic'],ignore_index=True)[['date','tic','close']]
@@ -108,7 +110,10 @@ def experiment_ddpg(training = False):
         # save model
         model_ddpg.save(TRAINED_MODEL_DIR)
     else:
-        assert os.path.exists(f'{TRAINED_MODEL_DIR}/{folder}.zip'), f'Path [{TRAINED_MODEL_DIR}/{folder}.zip] does not exists'
+        if not os.path.exists(f'{TRAINED_MODEL_DIR}/{folder}.zip'):
+            warnings.warn(f'Path [{TRAINED_MODEL_DIR}/{folder}.zip] does not exists')
+            exit()
+        
         # load model
         model_ddpg.load(TRAINED_MODEL_DIR + '/' + folder)
 
