@@ -11,6 +11,7 @@ from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from finrl import config_tickers
 # import math
 from statsmodels.stats.diagnostic import acorr_ljungbox
+from tqdm import tqdm
 
 import matplotlib
 from strategy.viz import test as viz_test, plot_candlestick
@@ -264,10 +265,11 @@ class Arima(Strategy):
             lags = self.p + self.q
             p_value = self._check_white_noise(residue_df, lags=lags)
 
-            print('----------------------------------------------------------------')
-            print(f"Ljung-Box p-value for residuals (lags={lags}): {p_value:.4f}. \n",
-                  f"Reject H0. i.e. Residue is not white noise ? {p_value < 0.05}")
-            print('----------------------------------------------------------------')
+            if debug:
+                print('----------------------------------------------------------------')
+                print(f"Ljung-Box p-value for residuals (lags={lags}): {p_value:.4f}. \n",
+                    f"Reject H0. i.e. Residue is not white noise ? {p_value < 0.05}")
+                print('----------------------------------------------------------------')
 
             if debug:
                 print(model_fit.summary())
@@ -287,7 +289,7 @@ class Arima(Strategy):
         except Exception as e:
             print(f"Error processing ticker: {e}")
 
-        return ticker_models
+        return ticker_models, p_value
     
     def play(self, df: pd.DataFrame, value_col: str = 'close', rounds = 5, use_last_n=-1) -> pd.DataFrame:
         # We fit till TRADE_START_DATE, and predict from TRADE_START_DATE to TRADE_END_DATE
@@ -309,7 +311,8 @@ class Arima(Strategy):
             rounds = rounds if rounds > 0 else N
 
             start = 0 if use_last_n < 0 else max(0, len(tic_df) - N - use_last_n)
-            for d in range(rounds):
+            pbar = tqdm(range(rounds), desc=f'{tic}')
+            for d in pbar:
                 train_tic_df = self._preprocess_data(tic_df.iloc[start:-N+d], tic, value_col)
                 if train_tic_df is None:
                     continue
@@ -317,11 +320,8 @@ class Arima(Strategy):
                 last_14_days_train = train_tic_df[value_col].iloc[-14:]
                 price_std = last_14_days_train.std()
 
-                print('----------------------------------------------------------------')
-                print(f"Training data for {tic}: {train_tic_df.shape}")
-                print('----------------------------------------------------------------')
 
-                ticker_models = self.fit(train_tic_df, debug=False)
+                ticker_models, residue_p_value = self.fit(train_tic_df, debug=False)
                 if ticker_models is None:
                     assert False, f'model was not constructed.'
 
@@ -344,7 +344,13 @@ class Arima(Strategy):
                     strategy['buy_volume'].append(0)
                 
                 confidences.append(np.clip(abs(diff)/price_std, 0.0, 1.0))
-                # print(f'{date}: confidence: {confidences[-1]}. diff:{diff}, price std:{price_std}')
+
+                pbar.set_postfix({"date": str(date).split(' ')[0], "Diff": diff, "Conf": confidences[-1], "Chi-p_value":residue_p_value})
+
+                # print('----------------------------------------------------------------')
+                # print(f"{str(date).split(' ')[0]} [{tic}] {train_tic_df.shape}. confidence: {confidences[-1]}. diff:{diff}, price std:{price_std}")
+                # print('----------------------------------------------------------------')
+                # print(f'{date}: ')
 
             output_df = pd.DataFrame({
                 'date': pd.to_datetime(dates),
@@ -543,14 +549,14 @@ def set_dates():
     TRAIN_END_DATE = '2024-12-31'
     # TEST_START_DATE = '2023-01-01'
     # TEST_END_DATE = '2023-12-31'
-    TRADE_START_DATE = '2025-01-01'
+    TRADE_START_DATE = '2025-02-01'
     TRADE_END_DATE = '2025-12-31'
 
 def test():
     set_dates()
     df = download_data(TRAIN_START_DATE, TRADE_END_DATE, config_tickers.DOW_3_TICKER)
     df = data_processing(df)
-    tics = ['MSFT', 'META']
+    tics = config_tickers.DOW_3_TICKER #['MSFT', 'META']
     arima = Arima(p=15, d=1, q=5, tics=tics)
     res = arima.play(df, rounds=-1, use_last_n=200)
 
