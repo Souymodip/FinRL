@@ -8,7 +8,9 @@ DOW_3_TICKER = [
     # "AAPL",
     "NVDA",
     "META",
-    "MSFT"
+    "MSFT",
+    "AMGN",
+    "AAPL"
 ]
 DOW_30_TICKER = [
     "AXP",
